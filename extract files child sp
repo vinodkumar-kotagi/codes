@@ -1,0 +1,243 @@
+
+
+ALTER PROCEDURE [dbo].[SymbologyFeedExtractsGenerationClientFinal] (@FeedFileID Int,@FileName varchar(200))
+AS
+/*
+	Purpose		: This SP is used to generate symbology feed exract files for mammoth project.
+	Execution	: EXEC SymbologyFeedExtractsGenerationClientFinal @FeedFileID=3,@FileName='MSI_WPG_Testing.dbo_ActionList'
+	
+	
+*/
+BEGIN TRY  
+
+	declare @SQL nvarchar(max),
+			@ProcessStartDt DateTime = Getdate(),
+			@Records Int,
+			@ProcessEndDt DateTime,
+			@Logid int
+
+	--Select @Logid = Isnull(Max(Logid)+1,1) From Testing.dbo.FeedLog
+	----Log table
+	--Insert into Testing.dbo.FeedLog (Logid,FeedFile,ProcessDate)
+	--Select @Logid,@FileName,@ProcessStartDt
+
+	select @SQL = FinalQuery
+	from Testing.dbo.FeedFile
+	where FeedFileID = @FeedFileID
+
+	if OBJECT_ID('Testing.dbo.ExtractFinalDestination') is not null
+		drop table Testing.dbo.ExtractFinalDestination
+	Exec(@SQL)
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'','ExtractFinalDestination table got created'
+
+	if OBJECT_ID('Testing.dbo.ExtractColumns') is not null
+		drop table Testing.dbo.ExtractColumns
+
+	select C.name as ColumnName, column_id into Testing.dbo.ExtractColumns from sys.columns as C 
+		where object_id = object_id('Testing.dbo.ExtractFinalDestination')
+	
+			DECLARE @cols AS NVARCHAR(MAX),  @query1  AS NVARCHAR(MAX), @colNames as nvarchar(max), @minColumnID int, @maxColumnID int, 
+		@tableScript nvarchar(max), @cName varchar(5000)
+		
+		Declare @fileNameCols varchar(1000)	
+		Declare @fileNameRows varchar(1000)
+
+		Declare @char varchar(1)
+		Declare @len int
+		Declare @i int=0
+		Declare @result varchar(5000)=''	
+		select @cols = STUFF((SELECT ',' + QUOTENAME(c.ColumnName) 
+							from Testing.dbo.ExtractColumns as C order by column_id                   
+					FOR XML PATH(''), TYPE
+					).value('.', 'NVARCHAR(MAX)') 
+				,1,1,'') 
+
+				select @cols
+				
+			
+		set @minColumnID=(select MIN(column_id) from Testing.dbo.ExtractColumns)
+		set @maxColumnID=(select MAX(column_id) from Testing.dbo.ExtractColumns)
+	
+		if OBJECT_ID('Testing.dbo.ExtractFinalColumnList') is not null
+			drop table Testing.dbo.ExtractFinalColumnList
+	
+		--Create Table ##FinalColumnList (Symbol varchar(500))
+		Create Table Testing.dbo.ExtractFinalColumnList (Temp_Column int)
+
+
+		While @minColumnID<=@maxColumnID
+		BEGIN
+			set @cName = (select rtrim(ltrim(columnName)) from Testing.dbo.ExtractColumns where column_id = @minColumnID)
+			set @len=LEN(@cName)
+			while @i<=@len
+			BEGIN
+				set @char=SUBSTRING(@cName, @i, 1)
+				 --if @char like '%[^a-zA-Z0-9]%'
+				 -- begin
+					--	set @char = ''
+				 -- end
+				  set @result = @result + @char
+				  set @i = @i + 1
+			END		
+			set @cName=(select '['+@result+']')
+			set @tableScript ='alter table Testing.dbo.ExtractFinalColumnList add '+@cName+' varchar(500)'
+			--print @tableScript				
+			exec(@tableScript)
+			set @minColumnID=(select MIN(column_id) from Testing.dbo.ExtractColumns where column_id>@minColumnID)
+			set @i=0
+			set @result=''
+		END
+
+		Alter Table Testing.dbo.ExtractFinalColumnList Drop column Temp_Column 
+
+
+		set @query1 = N'SELECT ' + @cols + N' from 
+					 (
+						select ColumnName
+						from Testing.dbo.ExtractColumns
+					) x
+					pivot 
+					(
+						max(ColumnName)
+						for ColumnName in (' + @cols + N')
+					) p '
+
+		Insert into Testing.dbo.ExtractFinalColumnList    
+		exec(@query1);	
+
+	
+	Declare @cmdCols varchar(5000)
+	Declare @cmdRows varchar(5000)
+
+	Create table #TempLogs (logs varchar(max))
+
+	set @cmdCols = 'bcp "select * from Testing.dbo.ExtractFinalColumnList" queryout \\netapp2.dai.netdai.com\datafeedsprod\MSINDIA\TempCols.CSV -t"|" -c -T -S localhost'    						
+	insert into #TempLogs
+	exec master..xp_cmdshell @cmdCols	
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'','TempCols.CSV file is created'
+	
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'cmdCols',logs from #TempLogs
+							
+
+	set @cmdRows = 'bcp "select * from Testing.dbo.ExtractFinalDestination" queryout \\netapp2.dai.netdai.com\datafeedsprod\MSINDIA\TempRows.CSV -t"|" -c -T -S localhost'      
+	truncate table #TempLogs
+	insert into #TempLogs
+	exec master..xp_cmdshell @cmdRows 
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'','TempRows.CSV file is created'
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'cmdRows',logs from #TempLogs
+
+
+	Declare @cmdFinal varchar(5000)
+	Declare @cmdDelCols varchar(5000)
+	Declare @cmdDelRows varchar(5000)
+	Declare @timeStamp Varchar(100)
+
+	SET @timeStamp = CONVERT(VARCHAR(8),GETDATE(),112)+ RIGHT(REPLACE(CONVERT(VARCHAR(20),GETDATE(),120),':',''),6)
+		
+	set @cmdFinal='copy /b "\\netapp2.dai.netdai.com\datafeedsprod\MSINDIA\TempCols.CSV"+"\\netapp2.dai.netdai.com\datafeedsprod\MSINDIA\TempRows.CSV" "\\netapp2.dai.netdai.com\datafeedsprod\MSINDIA\'+@FileName+'_'+@timeStamp+'.csv"'
+	truncate table #TempLogs
+	insert into #TempLogs
+	exec master..xp_cmdshell @cmdFinal	
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'','Final file merge is completed'
+		
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'cmdFinal',logs from #TempLogs
+
+
+	set @cmdDelCols='del "\\netapp2.dai.netdai.com\datafeedsprod\MSINDIA\TempCols.CSV'
+	set @cmdDelRows='del "\\netapp2.dai.netdai.com\datafeedsprod\MSINDIA\TempRows.CSV'
+
+	truncate table #TempLogs
+	insert into #TempLogs
+	exec master..xp_cmdshell @cmdDelCols
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'','TempCols.CSV file is deleted'
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'cmdDelCols',logs from #TempLogs
+
+	truncate table #TempLogs
+	insert into #TempLogs
+	exec master..xp_cmdshell @cmdDelRows
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'','TempRows.CSV file is deleted'
+
+	--Audit log
+	insert into Testing.dbo.FeedProcessLog(Logid,ProcessDate,FeedFile,CMDAction,Logs)
+	select @Logid,Getdate(),@FileName,'cmdDelCols',logs from #TempLogs	
+
+	--Log Records count and processtime
+	Select @Records = count(1) From Testing.dbo.ExtractFinalDestination
+
+	Update Testing.dbo.FeedLog 
+	Set Records = @Records,ProcessTime = Getdate() 
+	Where FeedFile = @FileName and Logid = (Select Max(Logid) From Testing.dbo.FeedLog Where FeedFile = @FileName)	
+	
+	if OBJECT_ID('Testing.dbo.ExtractColumns') is not null	
+	drop table  Testing.dbo.ExtractColumns
+
+	if OBJECT_ID('Testing.dbo.ExtractFinalColumnList') is not null	
+	drop table Testing.dbo.ExtractFinalColumnList
+
+	if OBJECT_ID('Testing.dbo.ExtractFinalDestination') is not null
+	drop table Testing.dbo.ExtractFinalDestination
+
+	if OBJECT_ID('tempdb.Testing.dbo.#TempLogs') is not null
+	drop table #TempLogs
+
+END TRY  
+BEGIN CATCH  
+	DECLARE @ErrorMessage NVARCHAR(4000);  
+    DECLARE @ErrorSeverity INT;  
+    DECLARE @ErrorState INT;  
+  
+    SELECT   
+        @ErrorMessage = ERROR_MESSAGE(),  
+        @ErrorSeverity = ERROR_SEVERITY(),  
+        @ErrorState = ERROR_STATE();  
+
+	--Log error msg
+	Update Testing.dbo.FeedLog 
+	Set ErrorMessage = @ErrorMessage
+	Where FeedFile = @FileName and Logid = (Select Max(Logid) From Testing.dbo.FeedLog Where FeedFile = @FileName)	
+  
+    -- Use RAISERROR inside the CATCH block to return error  
+    -- information about the original error that caused  
+    -- execution to jump to the CATCH block.  
+    RAISERROR (@ErrorMessage, -- Message text.  
+               @ErrorSeverity, -- Severity.  
+               @ErrorState -- State.  
+               );   
+
+
+END CATCH;  
+
+
+
+
+
+
+
