@@ -1,0 +1,49 @@
+CREATE TABLE [MSCloud].[FeedFile](
+	[FeedFile] [varchar](128) NOT NULL,
+	[Query] [nvarchar](max) NULL,
+	[RunTime] [varchar](32) NULL,
+	[ModifyDAte] [datetime] NULL  DEFAULT (getdate()),
+	[FeedFileID] [int] IDENTITY(1,1) NOT NULL,
+	[IsEnable] [bit] NULL,
+	[ColumnHeaders] [varchar](2048) NULL,
+	[FinalQuery] [nvarchar](max) NULL,
+	[ExpectedRecords] [int] 
+) 
+
+GO
+
+--insert into [MSCloud].[FeedFile]([FeedFile],[Query],[IsEnable],[FinalQuery],[ExpectedRecords])
+--values('UserSegments','SELECT [Id],[MemberId],[SegmentId],[CreatedDate],[UpdatedDate] FROM [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[UserSegments]',1,'SELECT [Id],[MemberId],[SegmentId],[CreatedDate],[UpdatedDate] into MSCloud.ExtractFinalDestination FROM [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[UserSegments]',252)
+--,('SegmentDetails','SELECT [ID],[Name],[Description],[NoOfRows],[Priority],[Query],[IsActive],[IsDefault],[DateCreated],[DateUpdated],[Query1],[PopupMobileUrl],[PopupDesktopUrl],[PopupTargetUrl] FROM [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[SegmentDetails]',1,
+--'SELECT [ID],[Name],[Description],[NoOfRows],[Priority],[Query],[IsActive],[IsDefault],[DateCreated],[DateUpdated],[Query1],[PopupMobileUrl],[PopupDesktopUrl],[PopupTargetUrl] into MSCloud.ExtractFinalDestination FROM [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[SegmentDetails]',164)
+--,('TemplateType','SELECT [ID],[Name],[Description],[IsActive],[DateCreated],[DateUpdated] FROM [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[TemplateType]',1,
+--'SELECT [ID],[Name],[Description],[IsActive],[DateCreated],[DateUpdated] into MSCloud.ExtractFinalDestination FROM [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[TemplateType]',26)
+--,('Segment_Notification','Select * from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[Segment_Notification]',1,'select * into MSCloud.ExtractFinalDestination from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[Segment_Notification]',54)
+--,('SegmentRowDetails','Select * from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[SegmentRowDetails]',1,'select * into MSCloud.ExtractFinalDestination from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[SegmentRowDetails]',1727)
+--,('SegmentColumnDetails','Select * from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[SegmentColumnDetails]',1,'select * into MSCloud.ExtractFinalDestination from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[SegmentColumnDetails]',1602)
+--,('SegmentPageSubscription','Select * from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[SegmentPageSubscription]',1,'select * into MSCloud.ExtractFinalDestination from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[SegmentPageSubscription]',null)
+--,('HooksTemplate','Select * from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[HooksTemplate]',1,'select * into MSCloud.ExtractFinalDestination from [MSIndiaDBalias\MSIndia].MSHKSubscription.[dbo].[HooksTemplate]',83)
+--,('SegmentEmailNotification_New','Select * from [MSIndiaDBalias\MSIndia].MSHKSubscription.dbo.SegmentEmailNotification_New',1,'select * into MSCloud.ExtractFinalDestination from [MSIndiaDBalias\MSIndia].MSHKSubscription.dbo.SegmentEmailNotification_New',200522)
+
+
+
+CREATE TABLE [MSCloud].[FeedLog](
+	[LogID] [int] NOT NULL,
+	[ProcessDate] [date] NOT NULL,
+	[FeedFile] [varchar](64) NOT NULL,
+	[Records] [int] NULL,
+	[ErrorMessage] [varchar](256) NULL,
+	[ProcessTime] [datetime] NOT NULL DEFAULT (getdate()))
+
+go
+
+
+CREATE TABLE [MSCloud].[FeedProcessLog](
+	[Logid] [bigint] NULL,
+	[ProcessDate] [datetime] NOT NULL,
+	[FeedFile] [varchar](64) NOT NULL,
+	[CMDAction] [varchar](20) NULL,
+	[Logs] [varchar](max) NULL
+) 
+
+go
