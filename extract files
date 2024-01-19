@@ -1,0 +1,43 @@
+
+ALTER PROCEDURE [dbo].[SymbologyFeedExtractsGenerationFinal] (@Frequency int)
+AS
+/*
+	Purpose		: This SP is used to generate symbology feed exract files for mammoth project.
+	Execution	: EXEC SymbologyFeedExtractsGenerationFinal @Frequency=4
+	
+	move \\netapp2.dai.netdai.com\datafeedsprod\MSINDIAHooksTemplate_20240118230943.csv \\netapp2.dai.netdai.com\datafeedsprod\MSINDIA\Archive
+*/
+BEGIN
+
+DECLARE @imin Int 
+		,@Imax Int 
+		,@FileId Int
+		,@FileName Varchar(100)	
+		,@srcpathwithfilename varchar(200)= ''
+
+DECLARE @feedFileId int,
+		@Query varchar(2048),
+		@feedFile varchar(128);
+
+select FeedFileID,FeedFile into #tempfile
+from dbo.FeedFile
+where IsEnable=1 and FinalQuery is not null and FrequencyType=@Frequency
+
+While (select count(1) from #tempfile)>0
+
+    BEGIN
+	select top 1 @feedFileId=FeedFileID,@feedFile=FeedFile from #tempfile
+        PRINT @feedFileId
+		print @feedFile
+		Exec dbo.SymbologyFeedExtractsGenerationClientFinal @feedFileId,@feedFile
+        Delete from #tempfile where FeedFileID=@feedFileId 
+    END;
+
+
+
+END
+
+
+
+
+
